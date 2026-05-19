@@ -33,8 +33,21 @@ CREATE TABLE IF NOT EXISTS ActivityRecords (
     FOREIGN KEY (StudentId) REFERENCES Students(Id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ReviewLogs (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ActivityRecordId INTEGER NOT NULL,
+    OldStatus TEXT NOT NULL DEFAULT '',
+    NewStatus TEXT NOT NULL DEFAULT '',
+    OldCredits REAL NOT NULL DEFAULT 0,
+    NewCredits REAL NOT NULL DEFAULT 0,
+    ReviewOpinion TEXT NOT NULL DEFAULT '',
+    ReviewedAt TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (ActivityRecordId) REFERENCES ActivityRecords(Id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS IX_Students_StudentNo ON Students(StudentNo);
 CREATE INDEX IF NOT EXISTS IX_ActivityRecords_StudentId ON ActivityRecords(StudentId);
+CREATE INDEX IF NOT EXISTS IX_ReviewLogs_ActivityRecordId ON ReviewLogs(ActivityRecordId);
 CREATE INDEX IF NOT EXISTS IX_ActivityRecords_Status ON ActivityRecords(Status);
 CREATE INDEX IF NOT EXISTS IX_ActivityRecords_Category ON ActivityRecords(Category);
 

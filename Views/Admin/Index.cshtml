@@ -15,6 +15,7 @@
         <input class="form-control" name="keyword" value="@ViewBag.Keyword" placeholder="按学号、姓名、学院、专业或班级查询" />
         <button class="btn btn-ink" type="submit">查询</button>
         <a class="btn btn-paper" asp-action="Index">重置</a>
+        <a class="btn btn-paper" asp-action="Export" asp-route-keyword="@ViewBag.Keyword">导出汇总</a>
     </form>
 </div>
 
@@ -34,6 +35,7 @@
                     <th>待审核</th>
                     <th>已通过</th>
                     <th>累计学分</th>
+                    <th>达标状态</th>
                     <th class="text-end">操作</th>
                 </tr>
             </thead>
@@ -47,6 +49,10 @@
                         <td>@item.PendingRecords</td>
                         <td>@item.ApprovedRecords</td>
                         <td><strong>@item.TotalCredits.ToString("0.0")</strong></td>
+                        <td>
+                            <span class="status-badge @item.CreditStatusClass">@item.CreditStatus</span>
+                            <small>差 @item.RemainingCredits.ToString("0.##") 分</small>
+                        </td>
                         <td>
                             <div class="table-actions">
                                 <a class="btn btn-paper" asp-controller="Students" asp-action="Details" asp-route-id="@item.StudentId">学生档案</a>

@@ -50,3 +50,40 @@
         </form>
     </article>
 </section>
+
+@{
+    var reviewLogs = ViewBag.ReviewLogs as IReadOnlyList<ReviewLog> ?? Array.Empty<ReviewLog>();
+}
+
+<section class="panel-card mt-4">
+    <div class="panel-title">
+        <div>
+            <p class="eyebrow">Review History</p>
+            <h2>审核历史</h2>
+        </div>
+    </div>
+    @if (reviewLogs.Any())
+    {
+        <div class="timeline-list">
+            @foreach (var log in reviewLogs)
+            {
+                <div class="timeline-item">
+                    <span class="status-dot @(log.NewStatus == ActivityOptions.ApprovedStatus ? "approved" : log.NewStatus == ActivityOptions.RejectedStatus ? "rejected" : string.Empty)"></span>
+                    <div>
+                        <strong>@log.OldStatus → @log.NewStatus</strong>
+                        <small>学分：@log.OldCredits.ToString("0.##") → @log.NewCredits.ToString("0.##") · @log.ReviewedAt.ToString("yyyy-MM-dd HH:mm")</small>
+                        @if (!string.IsNullOrWhiteSpace(log.ReviewOpinion))
+                        {
+                            <small>意见：@log.ReviewOpinion</small>
+                        }
+                    </div>
+                    <em>审核记录</em>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="empty-state">暂无审核历史</div>
+    }
+</section>

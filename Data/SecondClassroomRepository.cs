@@ -23,8 +23,12 @@ public class SecondClassroomRepository
             PendingCount = ScalarInt(connection, "SELECT COUNT(*) FROM ActivityRecords WHERE Status = @Status;", ("@Status", ActivityOptions.PendingStatus)),
             ApprovedCount = ScalarInt(connection, "SELECT COUNT(*) FROM ActivityRecords WHERE Status = @Status;", ("@Status", ActivityOptions.ApprovedStatus)),
             TotalCredits = ScalarDouble(connection, "SELECT COALESCE(SUM(Credits), 0) FROM ActivityRecords WHERE Status = @Status;", ("@Status", ActivityOptions.ApprovedStatus)),
+            CreditMetCount = ScalarInt(connection, "SELECT COUNT(*) FROM StudentSecondClassroomSummary WHERE TotalCredits >= @TargetCredits;", ("@TargetCredits", StudentSummary.TargetCredits)),
+            CreditNearCount = ScalarInt(connection, "SELECT COUNT(*) FROM StudentSecondClassroomSummary WHERE TotalCredits >= @NearTargetCredits AND TotalCredits < @TargetCredits;", ("@NearTargetCredits", StudentSummary.NearTargetCredits), ("@TargetCredits", StudentSummary.TargetCredits)),
+            CreditUnmetCount = ScalarInt(connection, "SELECT COUNT(*) FROM StudentSecondClassroomSummary WHERE TotalCredits < @NearTargetCredits;", ("@NearTargetCredits", StudentSummary.NearTargetCredits)),
             CategoryStats = GetCategoryStats(connection),
-            RecentActivities = GetRecentActivities(connection)
+            RecentActivities = GetRecentActivities(connection),
+            CollegeCreditRanks = GetCollegeCreditRanks(connection)
         };
     }
 
@@ -229,20 +233,68 @@ WHERE Id = @Id;";
     public void ReviewActivityRecord(int id, string status, double credits, string reviewOpinion)
     {
         using var connection = OpenConnection();
-        using var command = connection.CreateCommand();
-        command.CommandText = @"
+        using var transaction = connection.BeginTransaction();
+        var oldRecord = GetActivityRecordForReview(connection, transaction, id);
+        if (oldRecord is null)
+        {
+            return;
+        }
+
+        var newCredits = status == ActivityOptions.ApprovedStatus ? credits : 0;
+        var normalizedReviewOpinion = reviewOpinion.Trim();
+        var reviewedAt = ToDateTimeString(DateTime.Now);
+
+        using var updateCommand = connection.CreateCommand();
+        updateCommand.Transaction = transaction;
+        updateCommand.CommandText = @"
 UPDATE ActivityRecords
 SET Status = @Status,
     Credits = @Credits,
     ReviewOpinion = @ReviewOpinion,
     ReviewedAt = @ReviewedAt
 WHERE Id = @Id;";
-        Add(command, "@Id", id);
-        Add(command, "@Status", status);
-        Add(command, "@Credits", status == ActivityOptions.ApprovedStatus ? credits : 0);
-        Add(command, "@ReviewOpinion", reviewOpinion.Trim());
-        Add(command, "@ReviewedAt", ToDateTimeString(DateTime.Now));
-        command.ExecuteNonQuery();
+        Add(updateCommand, "@Id", id);
+        Add(updateCommand, "@Status", status);
+        Add(updateCommand, "@Credits", newCredits);
+        Add(updateCommand, "@ReviewOpinion", normalizedReviewOpinion);
+        Add(updateCommand, "@ReviewedAt", reviewedAt);
+        updateCommand.ExecuteNonQuery();
+
+        using var insertLogCommand = connection.CreateCommand();
+        insertLogCommand.Transaction = transaction;
+        insertLogCommand.CommandText = @"
+INSERT INTO ReviewLogs (ActivityRecordId, OldStatus, NewStatus, OldCredits, NewCredits, ReviewOpinion, ReviewedAt)
+VALUES (@ActivityRecordId, @OldStatus, @NewStatus, @OldCredits, @NewCredits, @ReviewOpinion, @ReviewedAt);";
+        Add(insertLogCommand, "@ActivityRecordId", id);
+        Add(insertLogCommand, "@OldStatus", oldRecord.Status);
+        Add(insertLogCommand, "@NewStatus", status);
+        Add(insertLogCommand, "@OldCredits", oldRecord.Credits);
+        Add(insertLogCommand, "@NewCredits", newCredits);
+        Add(insertLogCommand, "@ReviewOpinion", normalizedReviewOpinion);
+        Add(insertLogCommand, "@ReviewedAt", reviewedAt);
+        insertLogCommand.ExecuteNonQuery();
+
+        transaction.Commit();
+    }
+
+    public List<ReviewLog> GetReviewLogs(int activityRecordId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+SELECT * FROM ReviewLogs
+WHERE ActivityRecordId = @ActivityRecordId
+ORDER BY ReviewedAt DESC, Id DESC;";
+        Add(command, "@ActivityRecordId", activityRecordId);
+
+        var logs = new List<ReviewLog>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            logs.Add(MapReviewLog(reader));
+        }
+
+        return logs;
     }
 
     public void DeleteActivityRecord(int id)
@@ -293,6 +345,26 @@ ORDER BY TotalCredits DESC, PendingRecords DESC, StudentNo;";
         return summaries;
     }
 
+    private static ActivityRecord? GetActivityRecordForReview(SqliteConnection connection, SqliteTransaction transaction, int id)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT Id, Status, Credits FROM ActivityRecords WHERE Id = @Id;";
+        Add(command, "@Id", id);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return new ActivityRecord
+        {
+            Id = ReadInt(reader, "Id"),
+            Status = ReadString(reader, "Status"),
+            Credits = ReadDouble(reader, "Credits")
+        };
+    }
+
     private int? FindStudentIdByNo(string studentNo)
     {
         using var connection = OpenConnection();
@@ -327,6 +399,33 @@ ORDER BY Count DESC, Category;";
         }
 
         return stats;
+    }
+
+    private List<CollegeCreditRank> GetCollegeCreditRanks(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+SELECT College,
+       COUNT(*) AS StudentCount,
+       COALESCE(SUM(TotalCredits), 0) AS TotalCredits
+FROM StudentSecondClassroomSummary
+GROUP BY College
+ORDER BY TotalCredits DESC, StudentCount DESC, College
+LIMIT 5;";
+
+        var ranks = new List<CollegeCreditRank>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            ranks.Add(new CollegeCreditRank
+            {
+                College = ReadString(reader, "College"),
+                StudentCount = ReadInt(reader, "StudentCount"),
+                TotalCredits = ReadDouble(reader, "TotalCredits")
+            });
+        }
+
+        return ranks;
     }
 
     private List<RecentActivity> GetRecentActivities(SqliteConnection connection)
@@ -460,6 +559,21 @@ LIMIT 6;";
             ReviewOpinion = ReadString(reader, "ReviewOpinion"),
             SubmittedAt = ReadRequiredDate(reader, "SubmittedAt"),
             ReviewedAt = ReadNullableDate(reader, "ReviewedAt")
+        };
+    }
+
+    private static ReviewLog MapReviewLog(SqliteDataReader reader)
+    {
+        return new ReviewLog
+        {
+            Id = ReadInt(reader, "Id"),
+            ActivityRecordId = ReadInt(reader, "ActivityRecordId"),
+            OldStatus = ReadString(reader, "OldStatus"),
+            NewStatus = ReadString(reader, "NewStatus"),
+            OldCredits = ReadDouble(reader, "OldCredits"),
+            NewCredits = ReadDouble(reader, "NewCredits"),
+            ReviewOpinion = ReadString(reader, "ReviewOpinion"),
+            ReviewedAt = ReadRequiredDate(reader, "ReviewedAt")
         };
     }
 

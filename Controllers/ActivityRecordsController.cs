@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using SecondClassroomManager.Data;
 using SecondClassroomManager.Models;
@@ -21,10 +23,45 @@ public class ActivityRecordsController : Controller
         return View(_repository.GetActivityRecords(keyword, status, category));
     }
 
+    public IActionResult Export(string? keyword, string? status, string? category)
+    {
+        var records = _repository.GetActivityRecords(keyword, status, category);
+        var builder = new StringBuilder();
+        builder.AppendLine("学号,姓名,类别,活动名称,级别,组织单位,开始日期,结束日期,时长,状态,学分,审核意见,提交时间,审核时间");
+        foreach (var item in records)
+        {
+            builder.AppendLine(string.Join(',', new[]
+            {
+                Csv(item.StudentNo),
+                Csv(item.StudentName),
+                Csv(item.Category),
+                Csv(item.ActivityName),
+                Csv(item.Level),
+                Csv(item.Organizer),
+                Csv(item.StartDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty),
+                Csv(item.EndDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty),
+                item.Hours.ToString("0.##", CultureInfo.InvariantCulture),
+                Csv(item.Status),
+                item.Credits.ToString("0.##", CultureInfo.InvariantCulture),
+                Csv(item.ReviewOpinion),
+                Csv(item.SubmittedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)),
+                Csv(item.ReviewedAt?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? string.Empty)
+            }));
+        }
+
+        return CsvFile(builder, "activity-records.csv");
+    }
+
     public IActionResult Details(int id)
     {
         var record = _repository.GetActivityRecord(id);
-        return record == null ? NotFound() : View(record);
+        if (record == null)
+        {
+            return NotFound();
+        }
+
+        ViewBag.ReviewLogs = _repository.GetReviewLogs(id);
+        return View(record);
     }
 
     public IActionResult Create(int? studentId)
@@ -159,5 +196,20 @@ public class ActivityRecordsController : Controller
         {
             ModelState.AddModelError(nameof(ActivityRecord.EndDate), "结束日期不能早于开始日期");
         }
+    }
+
+    private static FileContentResult CsvFile(StringBuilder builder, string fileName)
+    {
+        var preamble = Encoding.UTF8.GetPreamble();
+        var content = Encoding.UTF8.GetBytes(builder.ToString());
+        return new FileContentResult(preamble.Concat(content).ToArray(), "text/csv; charset=utf-8")
+        {
+            FileDownloadName = fileName
+        };
+    }
+
+    private static string Csv(string value)
+    {
+        return $"\"{value.Replace("\"", "\"\"")}\"";
     }
 }

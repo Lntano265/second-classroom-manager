@@ -7,8 +7,13 @@ public class DashboardStats
     public int PendingCount { get; set; }
     public int ApprovedCount { get; set; }
     public double TotalCredits { get; set; }
+    public int CreditMetCount { get; set; }
+    public int CreditNearCount { get; set; }
+    public int CreditUnmetCount { get; set; }
+    public double PendingRatio => RecordCount == 0 ? 0 : PendingCount * 100.0 / RecordCount;
     public IReadOnlyList<CategoryStat> CategoryStats { get; set; } = Array.Empty<CategoryStat>();
     public IReadOnlyList<RecentActivity> RecentActivities { get; set; } = Array.Empty<RecentActivity>();
+    public IReadOnlyList<CollegeCreditRank> CollegeCreditRanks { get; set; } = Array.Empty<CollegeCreditRank>();
 }
 
 public class CategoryStat
@@ -26,4 +31,11 @@ public class RecentActivity
     public string Category { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public DateTime SubmittedAt { get; set; }
+}
+
+public class CollegeCreditRank
+{
+    public string College { get; set; } = string.Empty;
+    public int StudentCount { get; set; }
+    public double TotalCredits { get; set; }
 }

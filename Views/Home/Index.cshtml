@@ -25,6 +25,21 @@
     <article class="metric-card"><span>登记记录</span><strong>@Model.RecordCount</strong><small>覆盖社会活动、竞赛、证书等类别</small></article>
     <article class="metric-card urgent"><span>待审核</span><strong>@Model.PendingCount</strong><small>管理员可审核并授予学分</small></article>
     <article class="metric-card"><span>已通过</span><strong>@Model.ApprovedCount</strong><small>自动汇总到学生第二课堂档案</small></article>
+    <div class="metric-card">
+        <span>Credit Met</span>
+        <strong>@Model.CreditMetCount</strong>
+        <small>学分已达标学生</small>
+    </div>
+    <div class="metric-card">
+        <span>Credit Near</span>
+        <strong>@Model.CreditNearCount</strong>
+        <small>接近达标学生，继续参与即可完成目标</small>
+    </div>
+    <div class="metric-card urgent">
+        <span>Credit Warning</span>
+        <strong>@Model.CreditUnmetCount</strong>
+        <small>未达标学生，需继续参加第二课堂</small>
+    </div>
 </section>
 
 <div class="two-column">
@@ -43,6 +58,28 @@
                     <span>@item.Category</span>
                     <div class="category-bar"><i style="width:@Math.Min(item.Count * 18, 100)%"></i></div>
                     <strong>@item.Count 条 / @item.Credits.ToString("0.0") 分</strong>
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="panel-card">
+        <div class="panel-title">
+            <div>
+                <p class="eyebrow">College Rank</p>
+                <h2>学院累计学分排行</h2>
+            </div>
+            <span class="status-badge">待审核占比 @Model.PendingRatio.ToString("0.#")%</span>
+        </div>
+        <div class="category-stack">
+            @foreach (var item in Model.CollegeCreditRanks)
+            {
+                var width = Model.TotalCredits <= 0 ? 0 : Math.Min(100, item.TotalCredits / Model.TotalCredits * 100);
+                var widthText = width.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                <div class="category-row">
+                    <span>@item.College</span>
+                    <div class="category-bar"><i style="width:@widthText%"></i></div>
+                    <strong>@item.TotalCredits.ToString("0.##") 分</strong>
                 </div>
             }
         </div>
